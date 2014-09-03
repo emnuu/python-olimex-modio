@@ -116,6 +116,7 @@ Newer versions of the code are available here:
 
 import smbus
 import logging
+import struct 
 
 class DeviceNotFoundException(IOError):
   """Raised if we cannot communicate with the device."""
@@ -206,7 +207,8 @@ class Device(object):
       communicator: SmbBus or FakeBus, for testing purposes.
     """
     self.communicator = communicator(bus, address)
-    self.SetRelays(0)
+    self.GetRelayOuts()
+    
 
   def ChangeAddress(self, new_address):
     """Changes the address of modio.
@@ -220,7 +222,7 @@ class Device(object):
     """
     if new_address < 0 or new_address > 0xfF:
       raise ValueError("Invalid address: can be between 0 and 0xFF")
-    self.communicator.Write(CHANGE_ADDRESS_COMMAND, new_address)
+    self.communicator.Write(self.CHANGE_ADDRESS_COMMAND, new_address)
     self.communicator.address = new_address
      
   def GetRelayOuts(self):
@@ -230,12 +232,20 @@ class Device(object):
     for i in range(len(buffer)):
       data[i] = buffer[i]      
     self.relay_outs = [data[0]&1, data[0]&2, data[0]&4, data[0]&8]
-  
+   
+    self.relay_status = 0
+    
+    for cx in range(1 , 5):
+        if self.relay_outs[cx-1] != 0:
+            self.relay_status = (self.GetRelays() | self.GetRelayBit(cx))
+        else:
+            self.relay_status=(self.GetRelays() & ((~self.GetRelayBit(cx)) & 0xf))
+
   def GetRelayOut(self,relay_out):
     """Return value for relay 
 
     Args:
-      relay_out: int, 0 - 3, the relay value to get for. Note that olimex
+      relay_out: int, 1 - 4, the relay value to get for. Note that olimex
         mod-io has exactly 4 relays
    
     Raises:
@@ -249,7 +259,7 @@ class Device(object):
       relay_out = self.relay_outs[relay_out-1]
     except IndexError:
       raise ValueError(
-        "Invalid digital in: must be between 0 and %d", len(self.relay_out) - 1)
+        "Invalid digital out: must be between 1 and %d", len(self.relay_out))
     return relay_out != 0
     
   def GetDigitalIns(self):
@@ -348,6 +358,7 @@ class Device(object):
     """
     self.SetRelays(self.GetRelays() | self.GetRelayBit(relay))
 
+
   def OpenContactRelay(self, relay):
     """OpenContact a specific relay.
 
@@ -403,3 +414,4 @@ class Relay(object):
   def CloseContact(self):
     """Enables this relay, by closing the contact."""
     self.device.CloseContactRelay(self.number)
+
